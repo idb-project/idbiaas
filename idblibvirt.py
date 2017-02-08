@@ -165,7 +165,7 @@ class IDBLibvirt(object):
     def url_config(cls, url, token, verify):
         """Load config for this adapter from the idb."""
         res = requests.get(url + "/cloud_providers",
-                           headers={"X-IDB-API-Token": token}, verify=False)
+                           headers={"X-IDB-API-Token": token}, verify=verify)
         res.raise_for_status()
         return json.loads(res.json()[0]["config"])
 
