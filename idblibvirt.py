@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 """IDB libcloud adapter"""
 
+import logging
 import argparse
 import json
 
@@ -35,13 +36,30 @@ class Zone(object):
             else:
                 raise UnknownDriverError("Unknown driver: " + name)
         except KeyError as expt:
-            print dict_config
             raise InvalidZoneConfigError(
                 "Invalid zone configuration: " + expt.message)
 
-    def __init__(self, url, create):
+    def __init__(self, url, token, create):
         self.url = url
+        self.token = token
         self.create = create
+
+    def submit_machines(self, machines):
+        """Submit machines to the IDB."""
+        json_machines = self.json_machines(machines)
+        logging.info("Sending machines in zone %s to IDB API at %s",
+                     self.__class__.__name__, self.url)
+
+        requests.put(self.url + "machines",
+                     headers={
+                         "X-IDB-API-Token": self.token,
+                         "Content-Type": "application/json"
+                     }, data=json_machines)
+
+    @classmethod
+    def json_machines(cls, machines):
+        """Converts machines list to IDB compatible json."""
+        return json.dumps({"machines": [x.dict() for x in machines]})
 
     def machines(self):
         """This is not implemented here."""
@@ -71,7 +89,7 @@ class LibvirtZone(Zone):
     @classmethod
     def from_dict(cls, dict_config):
         hosts = LibvirtZone.hosts_from_dict(dict_config["hosts"])
-        return LibvirtZone(dict_config["url"], dict_config["create"], hosts)
+        return LibvirtZone(dict_config["url"], dict_config["token"], dict_config["create"], hosts)
 
     @classmethod
     def hosts_from_dict(cls, dict_hosts):
@@ -81,8 +99,8 @@ class LibvirtZone(Zone):
             hosts.append(LibvirtVMHost.from_dict(host))
         return hosts
 
-    def __init__(self, url, create, hosts):
-        super(LibvirtZone, self).__init__(url, create)
+    def __init__(self, url, token, create, hosts):
+        super(LibvirtZone, self).__init__(url, token, create)
         self.hosts = hosts
 
     def machines(self):
@@ -104,10 +122,10 @@ class DigitalOceanZone(Zone):
 
     @classmethod
     def from_dict(cls, dict_config):
-        return DigitalOceanZone(dict_config["url"], dict_config["create"], dict_config["driver"]["token"], dict_config["driver"]["version"])
+        return DigitalOceanZone(dict_config["url"], dict_config["token"], dict_config["create"], dict_config["driver"]["token"], dict_config["driver"]["version"])
 
-    def __init__(self, url, create, token, version):
-        super(DigitalOceanZone, self).__init__(url, create)
+    def __init__(self, url, idbtoken, create, token, version):
+        super(DigitalOceanZone, self).__init__(url, idbtoken, create)
         self.token = token
         self.version = version
 
@@ -142,51 +160,75 @@ class IDBMachine(object):
 
 class IDBLibvirt(object):
 
+    # BUG: This doesn't work currently (needs some changes in idb api).
     @classmethod
-    def get_config(cls, url, token):
+    def url_config(cls, url, token, verify):
         """Load config for this adapter from the idb."""
         res = requests.get(url + "/cloud_providers",
-                           headers={"X-IDB-API-Token": token})
+                           headers={"X-IDB-API-Token": token}, verify=False)
         res.raise_for_status()
-        return res.json()
+        return json.loads(res.json()[0]["config"])
 
     @classmethod
-    def zones_from_dict(cls, json_config):
-        """Create zones from json configuration."""
+    def file_config(cls, fil):
+        """Load config for this adapter from a local file."""
+        dict_config = json.load(fil)
+        return dict_config
+
+    @classmethod
+    def zones_from_dict(cls, dict_config):
+        """Create zones from dict configuration."""
         zones = []
-        for zone in json_config["zones"]:
+        for zone in dict_config["zones"]:
             zones.append(Zone.from_dict(zone))
 
         return zones
 
     @classmethod
-    def machines(cls, zones):
-        machines = []
+    def run_zones(cls, zones):
         for zone in zones:
-            machines = machines + zone.machines()
-
-    @classmethod
-    def json_machines(cls, machines):
-        return json.dumps({"machines": [x.dict() for x in machines]})
-
-    @classmethod
-    def submit_machines(cls, url, token, json_machines):
-        requests.put(url + "machines",
-                     headers={
-                         "X-IDB-API-Token": token,
-                         "Content-Type": "application/json"
-                     }, data=json_machines)
+            machines = zone.machines()
+            logging.info("Found machines in zone %s:", zone.__class__.__name__)
+            for machine in machines:
+                logging.info(machine.fqdn)
+            zone.submit_machines(machines)
 
     def run(self):
-        json_config = IDBLibvirt.get_config(self.url, self.token)
-        zones = IDBLibvirt.zones_from_dict(json_config)
-        machines = IDBLibvirt.machines(zones)
-        json_machines = IDBLibvirt.json_machines(machines)
-        IDBLibvirt.submit_machines(self.url, self.token, json_machines)
+        zones = IDBLibvirt.zones_from_dict(self.config)
+        self.run_zones(zones)
 
-    def __init__(self, url, token):
-        self.url = url
-        self.token = token
+    def __init__(self, config):
+        self.config = config
+
+
+def main():
+    logging.basicConfig(level=10)
+    parser = argparse.ArgumentParser(description='Update virtual machines to the IDB.')
+    config_source_group = parser.add_mutually_exclusive_group(required=True)
+    config_source_group.add_argument("--url", action="store", type=str,
+                                     help="base url of the IDB API ",
+                                     default=None)
+    parser.add_argument("--token", action="store",
+                        type=str, help="IDB API token",
+                        default="my_super_secret_token")
+    config_source_group.add_argument("--config", action="store",
+                                     type=file, help="local configuration file")
+    parser.add_argument("--verify", type=bool, default=True)
+    args = parser.parse_args()
+
+    config = None
+    if args.url:
+        logging.info("Fetching config from %s", args.url)
+        config = IDBLibvirt.url_config(args.url, args.token, args.verify)
+    elif args.config:
+        logging.info("Using config file %s", args.config.name)
+        config = IDBLibvirt.file_config(args.config)
+    else:
+        logging.error("No url or file config.")
+
+    idblv = IDBLibvirt(config)
+    idblv.run()
+
 
 if __name__ == "__main__":
-    pass
+    main()

@@ -9,6 +9,7 @@ class ZoneTest(unittest.TestCase):
     def test_from_dict_digitalocean(self):
         d = {
             "url": "http://example.org",
+            "token": "idbtoken",
             "create": False,
             "driver": {
                 "name":  libcloud.compute.types.Provider.DIGITAL_OCEAN,
@@ -25,6 +26,7 @@ class ZoneTest(unittest.TestCase):
     def test_from_dict_libvirt(self):
         d = {
             "url": "http://example.org",
+            "token": "idbtoken",
             "create": False,
             "driver": {
                 "name": libcloud.compute.types.Provider.LIBVIRT,
@@ -47,6 +49,7 @@ class LibvirtZoneTest(unittest.TestCase):
     def test_from_dict(self):
         d = {
             "url": "http://example.org",
+            "token": "idbtoken",
             "create": False,
             "driver": {
                 "name": libcloud.compute.types.Provider.LIBVIRT,
