@@ -158,7 +158,7 @@ class IDBMachine(object):
                 "device_type_id": self.device_type_id}
 
 
-class IDBLibvirt(object):
+class IDBIaas(object):
 
     # BUG: This doesn't work currently (needs some changes in idb api).
     @classmethod
@@ -194,7 +194,7 @@ class IDBLibvirt(object):
             zone.submit_machines(machines)
 
     def run(self):
-        zones = IDBLibvirt.zones_from_dict(self.config)
+        zones = IDBIaas.zones_from_dict(self.config)
         self.run_zones(zones)
 
     def __init__(self, config):
@@ -219,14 +219,14 @@ def main():
     config = None
     if args.url:
         logging.info("Fetching config from %s", args.url)
-        config = IDBLibvirt.url_config(args.url, args.token, args.verify)
+        config = IDBIaas.url_config(args.url, args.token, args.verify)
     elif args.config:
         logging.info("Using config file %s", args.config.name)
-        config = IDBLibvirt.file_config(args.config)
+        config = IDBIaas.file_config(args.config)
     else:
         logging.error("No url or file config.")
 
-    idblv = IDBLibvirt(config)
+    idblv = IDBIaas(config)
     idblv.run()
 
 

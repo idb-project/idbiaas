@@ -1,7 +1,7 @@
 import unittest
 import libcloud.compute.types
 
-import idblibvirt
+import idbiaas
 
 
 class ZoneTest(unittest.TestCase):
@@ -18,8 +18,8 @@ class ZoneTest(unittest.TestCase):
             }
         }
 
-        x = idblibvirt.Zone.from_dict(d)
-        self.assertIsInstance(x, idblibvirt.DigitalOceanZone)
+        x = idbiaas.Zone.from_dict(d)
+        self.assertIsInstance(x, idbiaas.DigitalOceanZone)
         self.assertEqual(x.token, "testtoken")
         self.assertEqual(x.version, "v2")
 
@@ -37,8 +37,8 @@ class ZoneTest(unittest.TestCase):
             }]
         }
 
-        x = idblibvirt.Zone.from_dict(d)
-        self.assertIsInstance(x, idblibvirt.LibvirtZone)
+        x = idbiaas.Zone.from_dict(d)
+        self.assertIsInstance(x, idbiaas.LibvirtZone)
         self.assertEqual(len(x.hosts), 1)
         self.assertEqual(x.hosts[0].name, "host.example.org")
         self.assertEqual(x.hosts[0].user, "testuser")
@@ -60,8 +60,8 @@ class LibvirtZoneTest(unittest.TestCase):
             }]
         }
 
-        x = idblibvirt.LibvirtZone.from_dict(d)
-        self.assertIsInstance(x, idblibvirt.LibvirtZone)
+        x = idbiaas.LibvirtZone.from_dict(d)
+        self.assertIsInstance(x, idbiaas.LibvirtZone)
         self.assertEqual(len(x.hosts), 1)
         self.assertEqual(x.hosts[0].name, "host.example.org")
         self.assertEqual(x.hosts[0].user, "testuser")
@@ -75,7 +75,7 @@ class LibvirtZoneTest(unittest.TestCase):
             "user": "testuser1"
         }]
 
-        x = idblibvirt.LibvirtZone.hosts_from_dict(d)
+        x = idbiaas.LibvirtZone.hosts_from_dict(d)
         self.assertIsInstance(x, list)
         self.assertEqual(len(x), 2)
 
