@@ -20,7 +20,7 @@ class ZoneTest(unittest.TestCase):
 
         x = idbiaas.Zone.from_dict(d)
         self.assertIsInstance(x, idbiaas.DigitalOceanZone)
-        self.assertEqual(x.token, "testtoken")
+        self.assertEqual(x.dotoken, "testtoken")
         self.assertEqual(x.version, "v2")
 
     def test_from_dict_libvirt(self):

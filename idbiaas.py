@@ -24,6 +24,14 @@ class Zone(object):
     create = False
 
     @classmethod
+    def verifies(cls, dict_config):
+        """Verify returns the value of the "verify" key, or True if it doesn't exist."""
+        if dict_config.has_key("verify") and dict_config["verify"] is False:
+            return False
+        
+        return True
+
+    @classmethod
     def from_dict(cls, dict_config):
         """Get a matching zone object for a configuration stored in a dict."""
         try:
@@ -39,10 +47,11 @@ class Zone(object):
             raise InvalidZoneConfigError(
                 "Invalid zone configuration: " + expt.message)
 
-    def __init__(self, url, token, create):
+    def __init__(self, url, token, create, verify):
         self.url = url
         self.token = token
         self.create = create
+        self.verify = verify
 
     def submit_machines(self, machines):
         """Submit machines to the IDB."""
@@ -50,16 +59,26 @@ class Zone(object):
         logging.info("Sending machines in zone %s to IDB API at %s",
                      self.__class__.__name__, self.url)
 
-        requests.put(self.url + "machines",
-                     headers={
-                         "X-IDB-API-Token": self.token,
-                         "Content-Type": "application/json"
-                     }, data=json_machines)
+        req = requests.Request("PUT", self.url + "/machines", headers={
+            "X-IDB-API-Token": self.token,
+            "Content-Type": "application/json"
+        }, data=json_machines)
 
-    @classmethod
-    def json_machines(cls, machines):
+        prepared = req.prepare()
+
+        logging.info("{} {}\n{}\n{}".format(prepared.method, prepared.url,
+                                            '\n'.join('{}: {}'.format(k, v) for k, v in prepared.headers.items()),
+                                            prepared.body))
+
+        s = requests.Session()
+        s.verify = self.verify
+        res = s.send(prepared)
+
+        logging.info("{}\n{}".format(res.status_code, res.text))
+
+    def json_machines(self, machines):
         """Converts machines list to IDB compatible json."""
-        return json.dumps({"machines": [x.dict() for x in machines]})
+        return json.dumps({"create_machine": self.create, "machines": [x.dict() for x in machines]})
 
     def machines(self):
         """This is not implemented here."""
@@ -89,7 +108,9 @@ class LibvirtZone(Zone):
     @classmethod
     def from_dict(cls, dict_config):
         hosts = LibvirtZone.hosts_from_dict(dict_config["hosts"])
-        return LibvirtZone(dict_config["url"], dict_config["token"], dict_config["create"], hosts)
+
+        return LibvirtZone(dict_config["url"], dict_config["token"],
+                           dict_config["create"], Zone.verifies(dict_config), hosts)
 
     @classmethod
     def hosts_from_dict(cls, dict_hosts):
@@ -99,8 +120,8 @@ class LibvirtZone(Zone):
             hosts.append(LibvirtVMHost.from_dict(host))
         return hosts
 
-    def __init__(self, url, token, create, hosts):
-        super(LibvirtZone, self).__init__(url, token, create)
+    def __init__(self, url, token, create, verify, hosts):
+        super(LibvirtZone, self).__init__(url, token, create, verify)
         self.hosts = hosts
 
     def machines(self):
@@ -122,18 +143,25 @@ class DigitalOceanZone(Zone):
 
     @classmethod
     def from_dict(cls, dict_config):
-        return DigitalOceanZone(dict_config["url"], dict_config["token"], dict_config["create"], dict_config["driver"]["token"], dict_config["driver"]["version"])
 
-    def __init__(self, url, idbtoken, create, token, version):
-        super(DigitalOceanZone, self).__init__(url, idbtoken, create)
-        self.token = token
+        return DigitalOceanZone(dict_config["url"], dict_config["token"],
+                                dict_config["create"], Zone.verifies(dict_config),
+                                dict_config["driver"]["token"],
+                                dict_config["driver"]["version"])
+
+    def __init__(self, url, idbtoken, create, verify, dotoken, version):
+        super(DigitalOceanZone, self).__init__(url, idbtoken, create, verify)
+        self.dotoken = dotoken
         self.version = version
+
+        logging.info("IDBTOKEN:" + idbtoken)
+        logging.info("TOKEN:" + dotoken)
 
     def machines(self):
         idb_machines = []
 
         driver = libcloud.compute.providers.get_driver(
-            libcloud.compute.types.Provider.DIGITAL_OCEAN)(self.token, api_version=self.version)
+            libcloud.compute.types.Provider.DIGITAL_OCEAN)(self.dotoken, api_version=self.version)
 
         nodes = driver.list_nodes()
         for node in nodes:
@@ -150,11 +178,11 @@ class IDBMachine(object):
         self.fqdn = fqdn
         self.vmhost = vmhost
         self.device_type_id = 2
-        self.create = create
+#        self.create = create
 
     def dict(self):
         """Returns the machine informations as a dictionary."""
-        return {"create": self.create, "fqdn": self.fqdn, "vmhost": self.vmhost,
+        return {"fqdn": self.fqdn, "vmhost": self.vmhost,
                 "device_type_id": self.device_type_id}
 
 
