@@ -1,5 +1,5 @@
 #! /usr/bin/env python
-"""IDB libcloud adapter"""
+"""IDB infrastructure-as-a-service (iaas) adapter"""
 
 import logging
 import argparse
