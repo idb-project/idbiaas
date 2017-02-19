@@ -254,8 +254,8 @@ def main():
     else:
         logging.error("No url or file config.")
 
-    idblv = IDBIaas(config)
-    idblv.run()
+    idbiaas = IDBIaas(config)
+    idbiaas.run()
 
 
 if __name__ == "__main__":
