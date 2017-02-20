@@ -1,5 +1,5 @@
 #! /usr/bin/env python
-"""IDB libcloud adapter"""
+"""IDB infrastructure-as-a-service (iaas) adapter"""
 
 import logging
 import argparse
@@ -230,7 +230,6 @@ class IDBIaas(object):
 
 
 def main():
-    logging.basicConfig(level=10)
     parser = argparse.ArgumentParser(description='Update virtual machines to the IDB.')
     config_source_group = parser.add_mutually_exclusive_group(required=True)
     config_source_group.add_argument("--url", action="store", type=str,
@@ -242,7 +241,13 @@ def main():
     config_source_group.add_argument("--config", action="store",
                                      type=file, help="local configuration file")
     parser.add_argument("--verify", type=bool, default=True)
+    parser.add_argument('-d', '--debug', help="Print debugging infos",
+                        action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING)
+    parser.add_argument('-v', '--verbose', help="Print verbose infos",
+                        action="store_const", dest="loglevel", const=logging.INFO)
     args = parser.parse_args()
+
+    logging.basicConfig(level=args.loglevel)
 
     config = None
     if args.url:
@@ -254,8 +259,8 @@ def main():
     else:
         logging.error("No url or file config.")
 
-    idblv = IDBIaas(config)
-    idblv.run()
+    idbiaas = IDBIaas(config)
+    idbiaas.run()
 
 
 if __name__ == "__main__":
