@@ -134,7 +134,8 @@ class LibvirtZone(Zone):
             nodes = driver.list_nodes()
             for node in nodes:
                 idb_machines.append(IDBMachine(
-                    self.create, node.name, driver.ex_get_hypervisor_hostname()))
+                    self.create, node.name, driver.ex_get_hypervisor_hostname(),
+                    node.extra['vcpu_count'], node.extra['used_memory']))
 
         return idb_machines
 
@@ -166,7 +167,7 @@ class DigitalOceanZone(Zone):
         nodes = driver.list_nodes()
         for node in nodes:
             idb_machines.append(IDBMachine(
-                self.create, node.name, ""))
+                self.create, node.name, "", node.extra["vcpus"], node.extra["memory"]))
 
         return idb_machines
 
@@ -174,16 +175,19 @@ class DigitalOceanZone(Zone):
 class IDBMachine(object):
     """IDB Machine object"""
 
-    def __init__(self, create, fqdn, vmhost):
+    def __init__(self, create, fqdn, vmhost, cpu, ram):
         self.fqdn = fqdn
         self.vmhost = vmhost
         self.device_type_id = 2
+        self.cpu = cpu
+        self.ram = ram
 #        self.create = create
 
     def dict(self):
         """Returns the machine informations as a dictionary."""
         return {"fqdn": self.fqdn, "vmhost": self.vmhost,
-                "device_type_id": self.device_type_id}
+                "device_type_id": self.device_type_id,
+                "cores": self.cpu, "ram": self.ram}
 
 
 class IDBIaas(object):
