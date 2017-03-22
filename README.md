@@ -1,20 +1,15 @@
 Adapter to read various sources supported by libvirt and submit them to a IDB instance.
 
-## Requirements
+# Installation
 
-- Create a virtualenv:
+- If you are not root, create a virtualenv and activate it
 
-    `virtualenv venv`
+	`virtualenv venv`
+	`. venv/bin/activate`
 
-- Activate virtualenv by sourcing the activation script:
+- Install idbiaas by running setup.py install
 
-    `. venv/bin/activate`
+	`python setup.py install`
 
-    or 
-
-    `source venv/bin/activate`
-
-- Install requirements:
-
-    `pip install -r requirements.txt`
+After these steps, you should have the `idbiaas` command installed in your virtualenv.
 
