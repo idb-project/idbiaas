@@ -279,7 +279,9 @@ def main():
                         default="my_super_secret_token")
     config_source_group.add_argument("--config", action="store",
                                      type=file, help="local configuration file")
-    parser.add_argument("--verify", type=bool, default=True)
+    parser.add_argument('--verify', dest='verify', action='store_true')
+    parser.add_argument('--no-verify', dest='verify', action='store_false')
+    parser.set_defaults(feature=True)
     parser.add_argument('-d', '--debug', help="Print debugging infos",
                         action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING)
     parser.add_argument('-v', '--verbose', help="Print verbose infos",
