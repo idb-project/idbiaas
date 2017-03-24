@@ -7,7 +7,7 @@ Adapter to read various sources supported by libvirt and submit them to a IDB in
 	`virtualenv venv`
 	`. venv/bin/activate`
 
-- Install idbiaas by running setup.py install
+- Install idbiaas by running pip install
 
 	`pip install .`
 
