@@ -4,6 +4,7 @@
 import logging
 import argparse
 import json
+import itertools
 
 import requests
 
@@ -20,7 +21,6 @@ class InvalidZoneConfigError(Exception):
 
 
 class Zone(object):
-
     create = False
 
     @classmethod
@@ -34,55 +34,39 @@ class Zone(object):
     @classmethod
     def from_dict(cls, dict_config):
         """Get a matching zone object for a configuration stored in a dict."""
+
+        idb = None
+        try:
+            idb = IDB.from_dict(dict_config["idb"])
+        except KeyError as expt:
+            raise InvalidZoneConfigError("Invalid zone configuration: " + expt.message)
+
+        zone = None
+    
         try:
             # select right zone class by driver name
             name = dict_config["driver"]["name"]
             if name == "digitalocean":
-                return DigitalOceanZone.from_dict(dict_config)
+                zone = DigitalOceanZone.from_dict(dict_config["driver"])
             elif name == "libvirt":
-                return LibvirtZone.from_dict(dict_config)
+                zone = LibvirtZone.from_dict(dict_config["driver"])
             else:
                 raise UnknownDriverError("Unknown driver: " + name)
         except KeyError as expt:
             raise InvalidZoneConfigError(
                 "Invalid zone configuration: " + expt.message)
 
-    def __init__(self, url, token, create, verify):
-        self.url = url
-        self.token = token
-        self.create = create
-        self.verify = verify
+        zone.idb = idb
+        
+        return zone
 
-    def submit_machines(self, machines):
-        """Submit machines to the IDB."""
-        json_machines = self.json_machines(machines)
-        logging.info("Sending machines in zone %s to IDB API at %s",
-                     self.__class__.__name__, self.url)
+    @property
+    def idb(self):
+        return self._idb
 
-        req = requests.Request("PUT", self.url + "/machines", headers={
-            "X-IDB-API-Token": self.token,
-            "Content-Type": "application/json"
-        }, data=json_machines)
-
-        prepared = req.prepare()
-
-        logging.info("{} {}\n{}\n{}".format(prepared.method, prepared.url,
-                                            '\n'.join('{}: {}'.format(k, v) for k, v in prepared.headers.items()),
-                                            prepared.body))
-
-        s = requests.Session()
-        s.verify = self.verify
-        res = s.send(prepared)
-
-        logging.info("{}\n{}".format(res.status_code, res.text))
-
-    def json_machines(self, machines):
-        """Converts machines list to IDB compatible json."""
-        return json.dumps({"create_machine": self.create, "machines": [x.dict() for x in machines]})
-
-    def machines(self):
-        """This is not implemented here."""
-        raise Exception("There are no exceptions, only happy little mistakes.")
+    @idb.setter
+    def idb(self, idb):
+        self._idb = idb
 
 
 class LibvirtVMHost(object):
@@ -109,8 +93,7 @@ class LibvirtZone(Zone):
     def from_dict(cls, dict_config):
         hosts = LibvirtZone.hosts_from_dict(dict_config["hosts"])
 
-        return LibvirtZone(dict_config["url"], dict_config["token"],
-                           dict_config["create"], Zone.verifies(dict_config), hosts)
+        return LibvirtZone(hosts)
 
     @classmethod
     def hosts_from_dict(cls, dict_hosts):
@@ -120,8 +103,7 @@ class LibvirtZone(Zone):
             hosts.append(LibvirtVMHost.from_dict(host))
         return hosts
 
-    def __init__(self, url, token, create, verify, hosts):
-        super(LibvirtZone, self).__init__(url, token, create, verify)
+    def __init__(self, hosts):
         self.hosts = hosts
 
     def machines(self):
@@ -134,7 +116,7 @@ class LibvirtZone(Zone):
             nodes = driver.list_nodes()
             for node in nodes:
                 idb_machines.append(IDBMachine(
-                    self.create, node.name, driver.ex_get_hypervisor_hostname(),
+                    node.name, driver.ex_get_hypervisor_hostname(),
                     node.extra['vcpu_count'], node.extra['used_memory']))
 
         return idb_machines
@@ -144,30 +126,21 @@ class DigitalOceanZone(Zone):
 
     @classmethod
     def from_dict(cls, dict_config):
+        return DigitalOceanZone(dict_config["token"], dict_config["version"])
 
-        return DigitalOceanZone(dict_config["url"], dict_config["token"],
-                                dict_config["create"], Zone.verifies(dict_config),
-                                dict_config["driver"]["token"],
-                                dict_config["driver"]["version"])
-
-    def __init__(self, url, idbtoken, create, verify, dotoken, version):
-        super(DigitalOceanZone, self).__init__(url, idbtoken, create, verify)
-        self.dotoken = dotoken
+    def __init__(self, token, version):
+        self.token = token
         self.version = version
-
-        logging.info("IDBTOKEN:" + idbtoken)
-        logging.info("TOKEN:" + dotoken)
 
     def machines(self):
         idb_machines = []
 
         driver = libcloud.compute.providers.get_driver(
-            libcloud.compute.types.Provider.DIGITAL_OCEAN)(self.dotoken, api_version=self.version)
+            libcloud.compute.types.Provider.DIGITAL_OCEAN)(self.token, api_version=self.version)
 
         nodes = driver.list_nodes()
         for node in nodes:
-            idb_machines.append(IDBMachine(
-                self.create, node.name, "", node.extra["vcpus"], node.extra["memory"]))
+            idb_machines.append(IDBMachine(node.name, "", node.extra["vcpus"], node.extra["memory"]))
 
         return idb_machines
 
@@ -175,19 +148,81 @@ class DigitalOceanZone(Zone):
 class IDBMachine(object):
     """IDB Machine object"""
 
-    def __init__(self, create, fqdn, vmhost, cpu, ram):
+    def __init__(self, fqdn, vmhost, cpu, ram):
         self.fqdn = fqdn
         self.vmhost = vmhost
         self.device_type_id = 2
         self.cpu = cpu
         self.ram = ram
-#        self.create = create
 
     def dict(self):
         """Returns the machine informations as a dictionary."""
         return {"fqdn": self.fqdn, "vmhost": self.vmhost,
                 "device_type_id": self.device_type_id,
                 "cores": self.cpu, "ram": self.ram}
+
+
+class IDB(object):
+    """IDB API"""
+
+    @classmethod
+    def from_dict(cls,dict_config):
+        create = False
+        verify = True
+        chunksize = 10
+        if dict_config.has_key("create"):
+            create = dict_config["create"]
+        
+        if dict_config.has_key("verify"):
+            verify = dict_config["verify"]
+
+        if dict_config.has_key("chunksize"):
+            chunksize = dict_config["chunksize"]
+
+        return IDB(dict_config["url"], dict_config["token"],create,verify,chunksize)
+
+    def __init__(self, url, token, create=False, verify=True, chunksize=10):
+        self.url = url
+        self.token = token
+        self.create = create
+        self.verify = verify
+        self.chunksize = chunksize
+
+    # group items of an iterable into chunks of size n
+    # http://stackoverflow.com/a/434411
+    def grouper(self, iterable, n, fillvalue=None):
+        args = [iter(iterable)] * n
+        return itertools.izip_longest(*args, fillvalue=fillvalue)
+
+    def json_machines(self, machines):
+        """Converts machines list to IDB compatible json."""
+        return json.dumps({"create_machine": self.create, "machines": [x.dict() for x in machines]})
+
+    def submit_machines(self, machines):
+        """Submit machines to the IDB."""
+
+        logging.info("Sending machines in zone %s to IDB API at %s",
+                     self.__class__.__name__, self.url)
+
+        for machines_chunk in self.grouper(machines, 10):
+            json_machines = self.json_machines(machines_chunk)
+
+            req = requests.Request("PUT", self.url + "/machines", headers={
+                "X-IDB-API-Token": self.token,
+                "Content-Type": "application/json"
+            }, data=json_machines)
+
+            prepared = req.prepare()
+
+            logging.info("{} {}\n{}\n{}".format(prepared.method, prepared.url,
+                                                '\n'.join('{}: {}'.format(k, v) for k, v in prepared.headers.items()),
+                                                prepared.body))
+
+            s = requests.Session()
+            s.verify = self.verify
+            res = s.send(prepared)
+
+            logging.info("{}\n{}".format(res.status_code, res.text))
 
 
 class IDBIaas(object):
