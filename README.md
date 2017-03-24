@@ -9,7 +9,6 @@ Adapter to read various sources supported by libvirt and submit them to a IDB in
 
 - Install idbiaas by running setup.py install
 
-	`python setup.py install`
+	`pip install .`
 
 After these steps, you should have the `idbiaas` command installed in your virtualenv.
-
