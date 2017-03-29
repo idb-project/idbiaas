@@ -5,6 +5,9 @@ setup(
     version="0.0.1",
     description="IDB IAAS adapter",
     packages=["idbiaas"],
+    author="bytemine GmbH",
+    author_email="schuller@bytemine.net",
+    url="https://github.com/idb-project/idbiaas",
     install_requires=[
         "requests",
         "apache-libcloud",
