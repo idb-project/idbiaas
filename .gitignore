@@ -1,0 +1,12 @@
+# venvs
+venv
+venv-dev
+
+# packaging
+tags
+*.pyc
+dist
+*.egg-info
+
+# misc
+.vscode
