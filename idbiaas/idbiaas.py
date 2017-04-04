@@ -110,11 +110,14 @@ class LibvirtZone(Zone):
         idb_machines = []
 
         for host in self.hosts:
+            logging.debug("LibvirtZone: retrieving nodes from %s", host.uri())
+
             driver = libcloud.compute.providers.get_driver(
                 libcloud.compute.types.Provider.LIBVIRT)(uri=host.uri())
 
             nodes = driver.list_nodes()
             for node in nodes:
+                logging.debug("LibvirtZone: got node %s", node)
                 idb_machines.append(IDBMachine(
                     node.name, driver.ex_get_hypervisor_hostname(),
                     node.extra['vcpu_count'], node.extra['used_memory']))
@@ -133,6 +136,7 @@ class DigitalOceanZone(Zone):
         self.version = version
 
     def machines(self):
+        logging.debug("DigitalOceanZone: retrieving nodes")
         idb_machines = []
 
         driver = libcloud.compute.providers.get_driver(
@@ -140,6 +144,7 @@ class DigitalOceanZone(Zone):
 
         nodes = driver.list_nodes()
         for node in nodes:
+            logging.debug("DigitalOceanZone: got node %s", node)
             idb_machines.append(IDBMachine(node.name, "", node.extra["vcpus"], node.extra["memory"]))
 
         return idb_machines
@@ -204,7 +209,7 @@ class IDB(object):
         logging.info("Sending machines in zone %s to IDB API at %s",
                      self.__class__.__name__, self.url)
 
-        for machines_chunk in self.grouper(machines, 10):
+        for machines_chunk in self.grouper(machines, 2):
             json_machines = self.json_machines(machines_chunk)
 
             req = requests.Request("PUT", self.url + "/machines", headers={
@@ -222,7 +227,7 @@ class IDB(object):
             s.verify = self.verify
             res = s.send(prepared)
 
-            logging.info("{}\n{}".format(res.status_code, res.text))
+            logging.info("%s\n%s", res.status_code, res.text.encode('utf-8'))
 
 
 class IDBIaas(object):
@@ -258,7 +263,7 @@ class IDBIaas(object):
             logging.info("Found machines in zone %s:", zone.__class__.__name__)
             for machine in machines:
                 logging.info(machine.fqdn)
-            zone.submit_machines(machines)
+            zone.idb.submit_machines(machines)
 
     def run(self):
         zones = IDBIaas.zones_from_dict(self.config)
