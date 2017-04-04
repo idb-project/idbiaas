@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="idbiaas",
-    version="0.0.1",
+    version="0.0.2",
     description="IDB IAAS adapter",
     packages=["idbiaas"],
     author="bytemine GmbH",
