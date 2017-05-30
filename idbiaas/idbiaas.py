@@ -112,15 +112,18 @@ class LibvirtZone(Zone):
         for host in self.hosts:
             logging.debug("LibvirtZone: retrieving nodes from %s", host.uri())
 
-            driver = libcloud.compute.providers.get_driver(
-                libcloud.compute.types.Provider.LIBVIRT)(uri=host.uri())
+            try:
+                driver = libcloud.compute.providers.get_driver(
+                    libcloud.compute.types.Provider.LIBVIRT)(uri=host.uri())
 
-            nodes = driver.list_nodes()
-            for node in nodes:
-                logging.debug("LibvirtZone: got node %s", node)
-                idb_machines.append(IDBMachine(
-                    node.name, driver.ex_get_hypervisor_hostname(),
-                    node.extra['vcpu_count'], node.extra['used_memory']))
+                nodes = driver.list_nodes()
+                for node in nodes:
+                    logging.debug("LibvirtZone: got node %s", node)
+                    idb_machines.append(IDBMachine(
+                        node.name, driver.ex_get_hypervisor_hostname(),
+                        node.extra['vcpu_count'], node.extra['used_memory']))
+            except Exception as e:
+                logging.debug("LibvirtZone: %s, continuing with next host", e)
 
         return idb_machines
 
@@ -139,13 +142,16 @@ class DigitalOceanZone(Zone):
         logging.debug("DigitalOceanZone: retrieving nodes")
         idb_machines = []
 
-        driver = libcloud.compute.providers.get_driver(
-            libcloud.compute.types.Provider.DIGITAL_OCEAN)(self.token, api_version=self.version)
+        try:
+            driver = libcloud.compute.providers.get_driver(
+                libcloud.compute.types.Provider.DIGITAL_OCEAN)(self.token, api_version=self.version)
 
-        nodes = driver.list_nodes()
-        for node in nodes:
-            logging.debug("DigitalOceanZone: got node %s", node)
-            idb_machines.append(IDBMachine(node.name, "", node.extra["vcpus"], node.extra["memory"]))
+            nodes = driver.list_nodes()
+            for node in nodes:
+                logging.debug("DigitalOceanZone: got node %s", node)
+                idb_machines.append(IDBMachine(node.name, "", node.extra["vcpus"], node.extra["memory"]))
+        except Exception as e:
+            logging.debug("DigitalOceanZone: %s, continuing with next host", e)
 
         return idb_machines
 
@@ -201,7 +207,7 @@ class IDB(object):
 
     def json_machines(self, machines):
         """Converts machines list to IDB compatible json."""
-        return json.dumps({"create_machine": self.create, "machines": [x.dict() for x in machines]})
+        return json.dumps({"create_machine": self.create, "machines": [x.dict() for x in machines if x != None]})
 
     def submit_machines(self, machines):
         """Submit machines to the IDB."""
