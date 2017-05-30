@@ -110,7 +110,7 @@ class LibvirtZone(Zone):
         idb_machines = []
 
         for host in self.hosts:
-            logging.debug("LibvirtZone: retrieving nodes from %s", host.uri())
+            logging.info("LibvirtZone: retrieving nodes from %s", host.uri())
 
             try:
                 driver = libcloud.compute.providers.get_driver(
@@ -123,7 +123,7 @@ class LibvirtZone(Zone):
                         node.name, driver.ex_get_hypervisor_hostname(),
                         node.extra['vcpu_count'], node.extra['used_memory']))
             except Exception as e:
-                logging.debug("LibvirtZone: %s, continuing with next host", e)
+                logging.error("LibvirtZone: %s, continuing with next host", e)
 
         return idb_machines
 
@@ -139,7 +139,7 @@ class DigitalOceanZone(Zone):
         self.version = version
 
     def machines(self):
-        logging.debug("DigitalOceanZone: retrieving nodes")
+        logging.info("DigitalOceanZone: retrieving nodes")
         idb_machines = []
 
         try:
@@ -151,7 +151,7 @@ class DigitalOceanZone(Zone):
                 logging.debug("DigitalOceanZone: got node %s", node)
                 idb_machines.append(IDBMachine(node.name, "", node.extra["vcpus"], node.extra["memory"]))
         except Exception as e:
-            logging.debug("DigitalOceanZone: %s, continuing with next host", e)
+            logging.error("DigitalOceanZone: %s, continuing with next host", e)
 
         return idb_machines
 
@@ -225,7 +225,7 @@ class IDB(object):
 
             prepared = req.prepare()
 
-            logging.info("{} {}\n{}\n{}".format(prepared.method, prepared.url,
+            logging.debug("{} {}\n{}\n{}".format(prepared.method, prepared.url,
                                                 '\n'.join('{}: {}'.format(k, v) for k, v in prepared.headers.items()),
                                                 prepared.body))
 
@@ -233,7 +233,7 @@ class IDB(object):
             s.verify = self.verify
             res = s.send(prepared)
 
-            logging.info("%s\n%s", res.status_code, res.text.encode('utf-8'))
+            logging.debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
 
 
 class IDBIaas(object):
@@ -290,13 +290,17 @@ def main():
                         default="my_super_secret_token")
     config_source_group.add_argument("--config", action="store",
                                      type=file, help="local configuration file")
-    parser.add_argument('--verify', dest='verify', action='store_true')
-    parser.add_argument('--no-verify', dest='verify', action='store_false')
-    parser.set_defaults(feature=True)
-    parser.add_argument('-d', '--debug', help="Print debugging infos",
-                        action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING)
-    parser.add_argument('-v', '--verbose', help="Print verbose infos",
-                        action="store_const", dest="loglevel", const=logging.INFO)
+    parser.add_argument('--verify', dest='verify', action='store_true', help="Verify SSL certificate chain when retrieving config")
+    parser.add_argument('--no-verify', dest='verify', action='store_false', help="Don't verify SSL certificate chain when retrieving config")
+
+    logging_group = parser.add_mutually_exclusive_group()
+    logging_group.add_argument("--critical", action='store_const', dest='loglevel', const=logging.CRITICAL, help="Log critical errors.")
+    logging_group.add_argument("--error", action='store_const', dest='loglevel', const=logging.ERROR, help="Log errors and above")
+    logging_group.add_argument("--warning", action='store_const', dest='loglevel', const=logging.WARNING, help="Log warnings and above")
+    logging_group.add_argument("--info", action='store_const', dest='loglevel', const=logging.INFO, help="Log informational messages and above")
+    logging_group.add_argument("--debug", action='store_const', dest='loglevel', const=logging.DEBUG, help="Log debug information and above")
+    parser.set_defaults(loglevel=logging.WARNING)
+
     args = parser.parse_args()
 
     logging.basicConfig(level=args.loglevel)
@@ -309,7 +313,8 @@ def main():
         logging.info("Using config file %s", args.config.name)
         config = IDBIaas.file_config(args.config)
     else:
-        logging.error("No url or file config.")
+        logging.critical("No url or file config.")
+        return
 
     idbiaas = IDBIaas(config)
     idbiaas.run()
