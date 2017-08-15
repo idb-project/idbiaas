@@ -180,34 +180,20 @@ class IDB(object):
     def from_dict(cls,dict_config):
         create = False
         verify = True
-        chunksize = 10
+
         if dict_config.has_key("create"):
             create = dict_config["create"]
         
         if dict_config.has_key("verify"):
             verify = dict_config["verify"]
 
-        if dict_config.has_key("chunksize"):
-            chunksize = dict_config["chunksize"]
+        return IDB(dict_config["url"], dict_config["token"],create,verify)
 
-        return IDB(dict_config["url"], dict_config["token"],create,verify,chunksize)
-
-    def __init__(self, url, token, create=False, verify=True, chunksize=10):
+    def __init__(self, url, token, create=False, verify=True):
         self.url = url
         self.token = token
         self.create = create
         self.verify = verify
-        self.chunksize = chunksize
-
-    # group items of an iterable into chunks of size n
-    # http://stackoverflow.com/a/434411
-    def grouper(self, iterable, n, fillvalue=None):
-        args = [iter(iterable)] * n
-        return itertools.izip_longest(*args, fillvalue=fillvalue)
-
-    def json_machines(self, machines):
-        """Converts machines list to IDB compatible json."""
-        return json.dumps({"create_machine": self.create, "machines": [x.dict() for x in machines if x != None]})
 
     def submit_machines(self, machines):
         """Submit machines to the IDB."""
@@ -215,25 +201,68 @@ class IDB(object):
         logging.info("Sending machines in zone %s to IDB API at %s",
                      self.__class__.__name__, self.url)
 
-        for machines_chunk in self.grouper(machines, 2):
-            json_machines = self.json_machines(machines_chunk)
+        for machine in machines:
+            if not machine:
+                logging.warn("unexpected None in machines list")
 
-            req = requests.Request("PUT", self.url + "/machines", headers={
-                "X-IDB-API-Token": self.token,
-                "Content-Type": "application/json"
-            }, data=json_machines)
+            if not machine.fqdn:
+                logging.warn("machine has empty fqdn")
 
-            prepared = req.prepare()
+            json_machine = machine.dict()
 
-            logging.debug("{} {}\n{}\n{}".format(prepared.method, prepared.url,
-                                                '\n'.join('{}: {}'.format(k, v) for k, v in prepared.headers.items()),
-                                                prepared.body))
+            # test if the object is existing
+            res = requests.get(self.url + "/machines/" + machine.fqdn, headers={
+                               "X-IDB-API-Token": self.token})
 
-            s = requests.Session()
-            s.verify = self.verify
-            res = s.send(prepared)
+            try:
+                res.raise_for_status()
+            except requests.exceptions.HTTPError:
+                if self.create:
+                    # machine doesn't exist but we want to create it
+                    self.create_machine(machine)
+                
+                # either we created, or want to ignore to current machine, skip to next one
+                continue
 
-            logging.debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
+            self.update_machine(machine)
+
+    def create_machine(self, machine):
+        """Create a machine in the IDB."""
+        req = requests.Request("POST", self.url + "/machines", headers={
+            "X-IDB-API-Token": self.token,
+            "Content-Type": "application/json"
+        }, data=json.dumps(machine.dict()))
+
+        prepared = req.prepare()
+
+        logging.debug("{} {}\n{}\n{}".format(prepared.method, prepared.url,
+                                            '\n'.join('{}: {}'.format(k, v) for k, v in prepared.headers.items()),
+                                            prepared.body))
+
+        s = requests.Session()
+        s.verify = self.verify
+        res = s.send(prepared)
+
+        logging.debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
+
+    def update_machine(self, machine):
+        """Update machine data in the IDB."""
+        req = requests.Request("PUT", self.url + "/machines/" + machine.fqdn, headers={
+            "X-IDB-API-Token": self.token,
+            "Content-Type": "application/json"
+        }, data=json.dumps(machine.dict()))
+
+        prepared = req.prepare()
+
+        logging.debug("{} {}\n{}\n{}".format(prepared.method, prepared.url,
+                                            '\n'.join('{}: {}'.format(k, v) for k, v in prepared.headers.items()),
+                                            prepared.body))
+
+        s = requests.Session()
+        s.verify = self.verify
+        res = s.send(prepared)
+
+        logging.debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
 
 
 class IDBIaas(object):
