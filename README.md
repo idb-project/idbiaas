@@ -51,6 +51,7 @@ A zone object has thes keys:
 A IDB configuration object has these keys:
 
 - `url`: URL where the IDB API is reached, eg. https://idb.example.org/api/v2
+- `version`: API version to use, `2` or `3` (integer)
 - `token`: IDB API token
 - `create`: set to true to create nonexisting machines in the IDB
 
