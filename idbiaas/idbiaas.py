@@ -110,7 +110,7 @@ class LibvirtZone(Zone):
         idb_machines = []
 
         for host in self.hosts:
-            logging.info("LibvirtZone: retrieving nodes from %s", host.uri())
+            logging.getLogger('idbiaas').info("LibvirtZone: retrieving nodes from %s", host.uri())
 
             try:
                 driver = libcloud.compute.providers.get_driver(
@@ -118,12 +118,12 @@ class LibvirtZone(Zone):
 
                 nodes = driver.list_nodes()
                 for node in nodes:
-                    logging.debug("LibvirtZone: got node %s", node)
+                    logging.getLogger('idbiaas').debug("LibvirtZone: got node %s", node)
                     idb_machines.append(IDBMachine(
                         node.name, driver.ex_get_hypervisor_hostname(),
                         node.extra['vcpu_count'], node.extra['used_memory']))
             except Exception as e:
-                logging.error("LibvirtZone: %s, continuing with next host", e)
+                logging.getLogger('idbiaas').error("LibvirtZone: %s, continuing with next host", e)
 
         return idb_machines
 
@@ -139,7 +139,7 @@ class DigitalOceanZone(Zone):
         self.version = version
 
     def machines(self):
-        logging.info("DigitalOceanZone: retrieving nodes")
+        logging.getLogger('idbiaas').info("DigitalOceanZone: retrieving nodes")
         idb_machines = []
 
         try:
@@ -148,10 +148,10 @@ class DigitalOceanZone(Zone):
 
             nodes = driver.list_nodes()
             for node in nodes:
-                logging.debug("DigitalOceanZone: got node %s", node)
+                logging.getLogger('idbiaas').debug("DigitalOceanZone: got node %s", node)
                 idb_machines.append(IDBMachine(node.name, "", node.extra["vcpus"], node.extra["memory"]))
         except Exception as e:
-            logging.error("DigitalOceanZone: %s, continuing with next host", e)
+            logging.getLogger('idbiaas').error("DigitalOceanZone: %s, continuing with next host", e)
 
         return idb_machines
 
@@ -212,8 +212,8 @@ class IDB(object):
     def submit_machines(self, machines):
         """Submit machines to the IDB."""
 
-        logging.info("Sending machines in zone %s to IDB API at %s",
-                     self.__class__.__name__, self.url)
+        logging.getLogger('idbiaas').info("Sending machines in zone %s to IDB API at %s",
+                                          self.__class__.__name__, self.url)
 
         for machines_chunk in self.grouper(machines, 2):
             json_machines = self.json_machines(machines_chunk)
@@ -225,15 +225,15 @@ class IDB(object):
 
             prepared = req.prepare()
 
-            logging.debug("{} {}\n{}\n{}".format(prepared.method, prepared.url,
-                                                '\n'.join('{}: {}'.format(k, v) for k, v in prepared.headers.items()),
-                                                prepared.body))
+            logging.getLogger('idbiaas').debug("%s %s\n%s\n%s", prepared.method, prepared.url,
+                                               '\n'.join('{}: {}'.format(k, v) for k, v in prepared.headers.items()),
+                                               prepared.body)
 
             s = requests.Session()
             s.verify = self.verify
             res = s.send(prepared)
 
-            logging.debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
+            logging.getLogger('idbiaas').debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
 
 
 class IDBIaas(object):
@@ -266,9 +266,9 @@ class IDBIaas(object):
     def run_zones(cls, zones):
         for zone in zones:
             machines = zone.machines()
-            logging.info("Found machines in zone %s:", zone.__class__.__name__)
+            logging.getLogger('idbiaas').info("Found machines in zone %s:", zone.__class__.__name__)
             for machine in machines:
-                logging.info(machine.fqdn)
+                logging.getLogger('idbiaas').info(machine.fqdn)
             zone.idb.submit_machines(machines)
 
     def run(self):
@@ -292,6 +292,9 @@ def main():
                                      type=file, help="local configuration file")
     parser.add_argument('--verify', dest='verify', action='store_true', help="Verify SSL certificate chain when retrieving config")
     parser.add_argument('--no-verify', dest='verify', action='store_false', help="Don't verify SSL certificate chain when retrieving config")
+    parser.add_argument('--syslog', type=str,
+                        help="Syslog address, see https://docs.python.org/2/library/logging.handlers.html#sysloghandler",
+                        default="/dev/log")
 
     logging_group = parser.add_mutually_exclusive_group()
     logging_group.add_argument("--critical", action='store_const', dest='loglevel', const=logging.CRITICAL, help="Log critical errors.")
@@ -303,17 +306,19 @@ def main():
 
     args = parser.parse_args()
 
-    logging.basicConfig(level=args.loglevel)
+    logger = logging.getLogger("idbiaas")
+    logger.setLevel(args.loglevel)
+    logger.addHandler(logging.handlers.SysLogHandler(address = args.syslog))
 
     config = None
     if args.url:
-        logging.info("Fetching config from %s", args.url)
+        logger.info("Fetching config from %s", args.url)
         config = IDBIaas.url_config(args.url, args.token, args.verify)
     elif args.config:
-        logging.info("Using config file %s", args.config.name)
+        logger.info("Using config file %s", args.config.name)
         config = IDBIaas.file_config(args.config)
     else:
-        logging.critical("No url or file config.")
+        logger.critical("No url or file config.")
         return
 
     idbiaas = IDBIaas(config)
