@@ -1,7 +1,8 @@
 # idbiaas
+
 Adapter to read various sources supported by apache-libcloud and submit them to a IDB instance.
 
-# Installation
+## Installation
 
 If you are not root, create a virtualenv and activate it
 
@@ -14,39 +15,43 @@ Install idbiaas by running pip install
 
 After these steps, you should have the `idbiaas` command installed in your virtualenv.
 
-# Usage
+## Usage
 
 Running idbiaas requires a configuration specifing zones to query information for. This configuration
 could either be loaded from a local file, or remotely from a IDB instance.
 
-## Remote Configuration 
+### Remote Configuration 
 
 To use a configuation stored in a IDB, run idbiaas with the `--url` and `--token` arguments:
 
-	idbiaas --url https://idb.example.org/api/v2 --token idb_api_token
+	idbiaas --v2-url https://idb.example.org/api/v2 --token idb_api_token
+
+or with API v3:
+
+	idbiaas --v3-url https://idb.example.org/api/v3 --token idb_api_token
 
 If the IDB instance has a self-signed certificate, you can use the `--no-verify` switch to disable
 certificate checks.
 
-## Local Configuration
+### Local Configuration
 
 To load a local configuration use the --config switch:
 
 	idbiaas --config idbiaas_config.json
 
-## Configuration
+### Configuration
 
 A idbiaas configuration is stored as JSON. The root object is an object with one field "zones".
 The value of "zones" is an array consisting of zone objects.
 
-### Zone configuration
+#### Zone configuration
 
 A zone object has thes keys:
 
 - `idb`: IDB configuration
 - `driver`: Driver configuration
 
-### IDB configuration
+#### IDB configuration
 
 A IDB configuration object has these keys:
 
@@ -55,12 +60,12 @@ A IDB configuration object has these keys:
 - `token`: IDB API token
 - `create`: set to true to create nonexisting machines in the IDB
 
-### Driver configuration
+#### Driver configuration
 
 The contents of a driver configuration object depend on which backend is used.
 Currently supported are digital ocean and libvirt.
 
-#### Digital Ocean
+##### Digital Ocean
 
 - `name`: digitalocean
 - `token`: digital ocean api token
@@ -74,7 +79,7 @@ Example:
 		"version": "v2"
 	}
 
-#### libvirt
+##### libvirt
 
 - `name`: libvirt
 - `hosts`: array of hosts to query
@@ -91,7 +96,7 @@ Example:
 		]
 	}
 
-##### libvirt hosts
+###### libvirt hosts
 
 - `name`: fqdn or ip of libvirt host
 - `user`: user to connect as
@@ -103,7 +108,7 @@ Example:
 		"user": "libvirt"
 	}
 
-### Example configuration
+#### Example configuration
 
 	{
 		"zones": [
