@@ -28,7 +28,7 @@ To use a configuation stored in a IDB, run idbiaas with the `--url` and `--token
 
 or with API v3:
 
-	idbiaas --v3-url https://idb.example.org/api/v3 --token idb_api_token
+	idbiaas --v3-url https://idb.example.org/api/v3 --token idb_api_token --config-name myconfig
 
 If the IDB instance has a self-signed certificate, you can use the `--no-verify` switch to disable
 certificate checks.
