@@ -37,7 +37,12 @@ class Zone(object):
 
         idb = None
         try:
-            idb = IDB.from_dict(dict_config["idb"])
+            if dict_config["idb"]["version"] == 2:
+                idb = IDBv2.from_dict(dict_config["idb"])
+            elif dict_config["idb"]["version"] == 3:
+                idb = IDBv3.from_dict(dict_config["idb"])
+            else:
+                raise KeyError
         except KeyError as expt:
             raise InvalidZoneConfigError("Invalid zone configuration: " + expt.message)
 
@@ -173,8 +178,8 @@ class IDBMachine(object):
                 "cores": self.cpu, "ram": self.ram}
 
 
-class IDB(object):
-    """IDB API"""
+class IDBv2(object):
+    """IDB API v2"""
 
     @classmethod
     def from_dict(cls,dict_config):
@@ -190,7 +195,7 @@ class IDB(object):
         if dict_config.has_key("chunksize"):
             chunksize = dict_config["chunksize"]
 
-        return IDB(dict_config["url"], dict_config["token"],create,verify,chunksize)
+        return IDBv2(dict_config["url"], dict_config["token"],create,verify,chunksize)
 
     def __init__(self, url, token, create=False, verify=True, chunksize=10):
         self.url = url
@@ -236,16 +241,119 @@ class IDB(object):
             logging.getLogger('idbiaas').debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
 
 
+class IDBv3(object):
+    """IDB API v3"""
+
+    @classmethod
+    def from_dict(cls,dict_config):
+        create = False
+        verify = True
+
+        if dict_config.has_key("create"):
+            create = dict_config["create"]
+        
+        if dict_config.has_key("verify"):
+            verify = dict_config["verify"]
+
+        return IDBv3(dict_config["url"], dict_config["token"],create,verify)
+
+    def __init__(self, url, token, create=False, verify=True):
+        self.url = url
+        self.token = token
+        self.create = create
+        self.verify = verify
+
+    def submit_machines(self, machines):
+        """Submit machines to the IDB."""
+
+        logging.info("Sending machines in zone %s to IDB API at %s",
+                     self.__class__.__name__, self.url)
+
+        for machine in machines:
+            if not machine:
+                logging.warn("unexpected None in machines list")
+
+            if not machine.fqdn:
+                logging.warn("machine has empty fqdn")
+
+            json_machine = machine.dict()
+
+            # test if the object is existing
+            res = requests.get(self.url + "/machines/" + machine.fqdn, headers={
+                               "X-IDB-API-Token": self.token})
+
+            try:
+                res.raise_for_status()
+            except requests.exceptions.HTTPError:
+                if self.create:
+                    # machine doesn't exist but we want to create it
+                    self.create_machine(machine)
+                
+                # either we created, or want to ignore to current machine, skip to next one
+                continue
+
+            self.update_machine(machine)
+
+    def create_machine(self, machine):
+        """Create a machine in the IDB."""
+        req = requests.Request("POST", self.url + "/machines", headers={
+            "X-IDB-API-Token": self.token,
+            "Content-Type": "application/json"
+        }, data=json.dumps(machine.dict()))
+
+        prepared = req.prepare()
+
+        logging.debug("{} {}\n{}\n{}".format(prepared.method, prepared.url,
+                                            '\n'.join('{}: {}'.format(k, v) for k, v in prepared.headers.items()),
+                                            prepared.body))
+
+        s = requests.Session()
+        s.verify = self.verify
+        res = s.send(prepared)
+
+        logging.debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
+
+    def update_machine(self, machine):
+        """Update machine data in the IDB."""
+        req = requests.Request("PUT", self.url + "/machines/" + machine.fqdn, headers={
+            "X-IDB-API-Token": self.token,
+            "Content-Type": "application/json"
+        }, data=json.dumps(machine.dict()))
+
+        prepared = req.prepare()
+
+        logging.debug("{} {}\n{}\n{}".format(prepared.method, prepared.url,
+                                            '\n'.join('{}: {}'.format(k, v) for k, v in prepared.headers.items()),
+                                            prepared.body))
+
+        s = requests.Session()
+        s.verify = self.verify
+        res = s.send(prepared)
+
+        logging.debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
+
+
 class IDBIaas(object):
 
-    # BUG: This doesn't work currently (needs some changes in idb api).
     @classmethod
-    def url_config(cls, url, token, verify):
-        """Load config for this adapter from the idb."""
+    def v2_url_config(cls, url, token, name, verify):
+        """Load config for this adapter from the idb (API v2)."""
         res = requests.get(url + "/cloud_providers",
                            headers={"X-IDB-API-Token": token}, verify=verify)
         res.raise_for_status()
-        return json.loads(res.json()[0]["config"])
+        for c in res.json():
+            if c["name"] == name:
+                return json.loads(c["config"])
+
+        raise 'No config named "{}" found.'.format(name)
+
+    @classmethod
+    def v3_url_config(cls, url, token, name, verify):
+        """Load config for this adapter from the idb (API v3)"""
+        res = requests.get(url + "/cloud_providers/" + name,
+                           headers={"X-IDB-API-Token": token}, verify=verify)
+        res.raise_for_status()
+        return json.loads(res.json()["config"])
 
     @classmethod
     def file_config(cls, fil):
@@ -281,27 +389,80 @@ class IDBIaas(object):
 
 def main():
     parser = argparse.ArgumentParser(description='Update virtual machines to the IDB.')
+
     config_source_group = parser.add_mutually_exclusive_group(required=True)
-    config_source_group.add_argument("--url", action="store", type=str,
-                                     help="base url of the IDB API ",
+    config_source_group.add_argument("--v3-url",
+                                     action="store",
+                                     type=str,
+                                     help="base url of the IDB API v3 (http://idb.example.org/api/v3)",
                                      default=None)
+
+    config_source_group.add_argument("--v2-url",
+                                     action="store",
+                                     type=str,
+                                     help="base url of the IDB API v2 (http://idb.example.org/api/v2)",
+                                     default=None)
+
+    parser.add_argument("--config-name",
+                        action="store",
+                        type=str,
+                        help="name of cloud provider config in the IDB",
+                        default="idbiaas")
+
     parser.add_argument("--token", action="store",
                         type=str, help="IDB API token",
                         default="my_super_secret_token")
-    config_source_group.add_argument("--config", action="store",
-                                     type=file, help="local configuration file")
-    parser.add_argument('--verify', dest='verify', action='store_true', help="Verify SSL certificate chain when retrieving config")
-    parser.add_argument('--no-verify', dest='verify', action='store_false', help="Don't verify SSL certificate chain when retrieving config")
+
+    config_source_group.add_argument("--config",
+                                     action="store",
+                                     type=file,
+                                     help="local configuration file")
+
+    parser.add_argument('--verify',
+                        dest='verify',
+                        action='store_true',
+                        help="Verify SSL certificate chain when retrieving config")
+
+    parser.add_argument('--no-verify',
+                        dest='verify',
+                        action='store_false',
+                        help="Don't verify SSL certificate chain when retrieving config")
+
     parser.add_argument('--syslog', type=str,
                         help="Syslog address, see https://docs.python.org/2/library/logging.handlers.html#sysloghandler",
                         default="/dev/log")
 
     logging_group = parser.add_mutually_exclusive_group()
-    logging_group.add_argument("--critical", action='store_const', dest='loglevel', const=logging.CRITICAL, help="Log critical errors.")
-    logging_group.add_argument("--error", action='store_const', dest='loglevel', const=logging.ERROR, help="Log errors and above")
-    logging_group.add_argument("--warning", action='store_const', dest='loglevel', const=logging.WARNING, help="Log warnings and above")
-    logging_group.add_argument("--info", action='store_const', dest='loglevel', const=logging.INFO, help="Log informational messages and above")
-    logging_group.add_argument("--debug", action='store_const', dest='loglevel', const=logging.DEBUG, help="Log debug information and above")
+    logging_group.add_argument("--critical",
+                               action='store_const',
+                               dest='loglevel',
+                               const=logging.CRITICAL,
+                               help="Log critical errors.")
+
+    logging_group.add_argument("--error",
+                               action='store_const',
+                               dest='loglevel',
+                               const=logging.ERROR,
+                               help="Log errors and above")
+
+    logging_group.add_argument("--warning",
+                               action='store_const',
+                               dest='loglevel',
+                               const=logging.WARNING,
+                               help="Log warnings and above")
+
+    logging_group.add_argument("--info",
+                               action='store_const',
+                               dest='loglevel',
+                               const=logging.INFO,
+                               help="Log informational messages and above")
+
+    logging_group.add_argument("--debug",
+                               action='store_const',
+                               dest='loglevel',
+                               const=logging.DEBUG,
+                               help="Log debug information and above")
+
     parser.set_defaults(loglevel=logging.WARNING)
 
     args = parser.parse_args()
@@ -311,9 +472,12 @@ def main():
     logger.addHandler(logging.handlers.SysLogHandler(address = args.syslog))
 
     config = None
-    if args.url:
-        logger.info("Fetching config from %s", args.url)
-        config = IDBIaas.url_config(args.url, args.token, args.verify)
+    if args.v3_url:
+        logger.info("Fetching config from %s", args.v3_url)
+        config = IDBIaas.v3_url_config(args.v3_url, args.token, args.config_name, args.verify)
+    elif args.v2_url:
+        logger.info("Fetching config from %s", args.v2_url)
+        config = IDBIaas.v2_url_config(args.v2_url, args.token, args.config_name, args.verify)
     elif args.config:
         logger.info("Using config file %s", args.config.name)
         config = IDBIaas.file_config(args.config)

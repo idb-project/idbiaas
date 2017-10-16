@@ -7,6 +7,7 @@ do_zone_config = {
     "idb": {
         "url": "http://example.org",
         "token": "idbtoken",
+        "version": 2,
         "create": False
     },
     "driver": {
@@ -20,6 +21,7 @@ libvirt_zone_config = {
     "idb":{
         "url": "http://example.org",
         "token": "idbtoken",
+        "version": 3,
         "create": False
     },
     "driver": {
