@@ -2,31 +2,33 @@ from setuptools import setup
 
 setup(
     name="idbiaas",
-    version="0.0.5",
+    version="0.0.6",
     description="IDB IAAS adapter",
     packages=["idbiaas"],
     author="bytemine GmbH",
     author_email="schuller@bytemine.net",
     url="https://github.com/idb-project/idbiaas",
     install_requires=[
-        "requests",
         "apache-libcloud",
         "appdirs",
-        "argparse",
         "asn1crypto",
         "backports.ssl-match-hostname",
+        "certifi",
         "cffi",
+        "chardet",
         "cryptography",
         "enum34",
+        "idbiaas",
         "idna",
         "ipaddress",
         "libvirt-python",
         "packaging",
-        "pyOpenSSL",
         "pycparser",
+        "pyOpenSSL",
         "pyparsing",
+        "requests",
         "six",
-        "wsgiref"
-        ],
+        "urllib3"
+    ],
     entry_points={'console_scripts':['idbiaas=idbiaas.idbiaas:main']}
 )
