@@ -2,6 +2,7 @@
 """IDB infrastructure-as-a-service (iaas) adapter"""
 
 import logging
+import logging.handlers
 import argparse
 import json
 import itertools
@@ -177,6 +178,12 @@ class IDBMachine(object):
                 "device_type_id": self.device_type_id,
                 "cores": self.cpu, "ram": self.ram}
 
+    def dict_v3(self):
+        """Returns the machine informations as a API v3 dictionary."""
+        return {"fqdn": self.fqdn, "vmhost": self.vmhost,
+                "cores": self.cpu, "ram": self.ram}
+
+
 
 class IDBv2(object):
     """IDB API v2"""
@@ -266,20 +273,23 @@ class IDBv3(object):
     def submit_machines(self, machines):
         """Submit machines to the IDB."""
 
-        logging.info("Sending machines in zone %s to IDB API at %s",
+        logging.getLogger('idbiaas').info("Sending machines in zone %s to IDB API at %s",
                      self.__class__.__name__, self.url)
 
         for machine in machines:
             if not machine:
-                logging.warn("unexpected None in machines list")
+                logging.getLogger('idbiaas').warn("unexpected None in machines list")
 
             if not machine.fqdn:
-                logging.warn("machine has empty fqdn")
+                logging.getLogger('idbiaas').warn("machine has empty fqdn")
 
-            json_machine = machine.dict()
+            json_machine = machine.dict_v3()
 
             # test if the object is existing
-            res = requests.get(self.url + "/machines/" + machine.fqdn, headers={
+            s = requests.Session()
+            s.verify = self.verify
+
+            res = s.get(self.url + "/machines/" + machine.fqdn, headers={
                                "X-IDB-API-Token": self.token})
 
             try:
@@ -299,11 +309,11 @@ class IDBv3(object):
         req = requests.Request("POST", self.url + "/machines", headers={
             "X-IDB-API-Token": self.token,
             "Content-Type": "application/json"
-        }, data=json.dumps(machine.dict()))
+        }, data=json.dumps(machine.dict_v3()))
 
         prepared = req.prepare()
 
-        logging.debug("{} {}\n{}\n{}".format(prepared.method, prepared.url,
+        logging.getLogger('idbiaas').debug("{} {}\n{}\n{}".format(prepared.method, prepared.url,
                                             '\n'.join('{}: {}'.format(k, v) for k, v in prepared.headers.items()),
                                             prepared.body))
 
@@ -311,18 +321,18 @@ class IDBv3(object):
         s.verify = self.verify
         res = s.send(prepared)
 
-        logging.debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
+        logging.getLogger('idbiaas').debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
 
     def update_machine(self, machine):
         """Update machine data in the IDB."""
         req = requests.Request("PUT", self.url + "/machines/" + machine.fqdn, headers={
             "X-IDB-API-Token": self.token,
             "Content-Type": "application/json"
-        }, data=json.dumps(machine.dict()))
+        }, data=json.dumps(machine.dict_v3()))
 
         prepared = req.prepare()
 
-        logging.debug("{} {}\n{}\n{}".format(prepared.method, prepared.url,
+        logging.getLogger('idbiaas').debug("{} {}\n{}\n{}".format(prepared.method, prepared.url,
                                             '\n'.join('{}: {}'.format(k, v) for k, v in prepared.headers.items()),
                                             prepared.body))
 
@@ -330,7 +340,7 @@ class IDBv3(object):
         s.verify = self.verify
         res = s.send(prepared)
 
-        logging.debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
+        logging.getLogger('idbiaas').debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
 
 
 class IDBIaas(object):
