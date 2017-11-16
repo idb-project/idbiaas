@@ -4,6 +4,8 @@ Adapter to read various sources supported by apache-libcloud and submit them to 
 
 ## Installation
 
+### virtualenv
+
 If you are not root, create a virtualenv and activate it
 
 	virtualenv venv
@@ -14,6 +16,11 @@ Install idbiaas by running pip install
 	pip install .
 
 After these steps, you should have the `idbiaas` command installed in your virtualenv.
+
+### pex
+
+[pex](https://pex.readthedocs.io/en/stable/) packages a python program and its requirements into one executable file.
+to create such a pex file you can run `make pex`, the resulting pex file will be written to ./pex/idbiaas.pex
 
 ## Usage
 
