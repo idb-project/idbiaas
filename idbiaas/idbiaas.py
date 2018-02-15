@@ -266,9 +266,16 @@ class IDBv3(object):
 
     def __init__(self, url, token, create=False, verify=True):
         self.url = url
-        self.token = token
         self.create = create
         self.verify = verify
+        self.multitoken = False
+
+        # join multiple token and set multitoken flag which is checked to disable creation
+        if isinstance(token, list):
+            self.token = ",".join(token)
+            self.multitoken = True
+        else:
+            self.token = token
 
     def submit_machines(self, machines):
         """Submit machines to the IDB."""
@@ -296,20 +303,36 @@ class IDBv3(object):
                 res.raise_for_status()
             except requests.exceptions.HTTPError:
                 if self.create:
+                    # abort if we have multiple tokens as we don't know the owner for new machines
+                    if self.multitoken:
+                        logging.getLogger('idbiaas').error("Can't create machines using multiple tokens!")
+                        continue
                     # machine doesn't exist but we want to create it
-                    self.create_machine(machine)
-                
+                    self.create_machine(self.token, machine)
                 # either we created, or want to ignore to current machine, skip to next one
                 continue
 
-            self.update_machine(machine)
+            # get the right token for this object.
+            # if the X-Idb-Api-Token header isn't set, use our own token (assuming that it is a single value).
+            t = self.token
+            try:
+                t = res.headers["X-Idb-Api-Token"]
+                logging.getLogger('idbiaas').debug("Response contained token %s" % t)
+            except:
+                pass
 
-    def create_machine(self, machine):
+            logging.getLogger('idbiaas').debug("Using token %s" % t)
+
+            self.update_machine(t, machine)
+
+    def create_machine(self, token, machine):
         """Create a machine in the IDB."""
         req = requests.Request("POST", self.url + "/machines", headers={
-            "X-IDB-API-Token": self.token,
+            "X-IDB-API-Token": token,
             "Content-Type": "application/json"
         }, data=json.dumps(machine.dict_v3()))
+
+        logging.getLogger('idbiaas').info("Creating machine %s" % machine.fqdn)
 
         prepared = req.prepare()
 
@@ -323,12 +346,14 @@ class IDBv3(object):
 
         logging.getLogger('idbiaas').debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
 
-    def update_machine(self, machine):
+    def update_machine(self, token, machine):
         """Update machine data in the IDB."""
         req = requests.Request("PUT", self.url + "/machines/" + machine.fqdn, headers={
-            "X-IDB-API-Token": self.token,
+            "X-IDB-API-Token": token,
             "Content-Type": "application/json"
         }, data=json.dumps(machine.dict_v3()))
+
+        logging.getLogger('idbiaas').info("Updating machine %s" % machine.fqdn)
 
         prepared = req.prepare()
 
@@ -341,6 +366,11 @@ class IDBv3(object):
         res = s.send(prepared)
 
         logging.getLogger('idbiaas').debug("%s\n%s", res.status_code, res.text.encode('utf-8'))
+
+        try:
+            res.raise_for_status()
+        except:
+            logging.getLogger('idbiaas').warn("Machine %s not updated!" % machine.fqdn)
 
 
 class IDBIaas(object):
