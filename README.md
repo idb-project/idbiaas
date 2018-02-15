@@ -1,12 +1,28 @@
 # idbiaas
 
+## About
+
 Adapter to read various sources supported by apache-libcloud and submit them to a IDB instance.
 
-## Installation
+### Supported cloud types
 
-### virtualenv
+- Digital Ocean
+- libvirt
 
-If you are not root, create a virtualenv and activate it
+## Setup
+
+### pex
+
+To create a pex file just run `make pex/idbiaas.pex`. This will
+
+1. create a virtual environment and install pex in it
+2. use this virtual environment to create a pex which will be dropped to `pex/idbiaas.pex`
+
+The pex file should be usable on the same os and architecture (e.g. linux and x86_64).
+
+### Manual setup
+
+Create a virtualenv and activate it:
 
 	virtualenv venv
 	. venv/bin/activate
@@ -17,15 +33,18 @@ Install idbiaas by running pip install
 
 After these steps, you should have the `idbiaas` command installed in your virtualenv.
 
-### pex
+### Troubleshooting
 
-[pex](https://pex.readthedocs.io/en/stable/) packages a python program and its requirements into one executable file.
-to create such a pex file you can run `make pex`, the resulting pex file will be written to ./pex/idbiaas.pex
+If you want to install manually on an older distribution, you may get errors while installing
+the dependencies. Upgrading `pip` locally in the virtual environment should fix this:
+
+	(venv) $ pip install --upgrade pip
 
 ## Usage
 
 Running idbiaas requires a configuration specifing zones to query information for. This configuration
-could either be loaded from a local file, or remotely from a IDB instance.
+could either be loaded from a local file, or remotely from a IDB instance. Remote configuration should
+be the preferred way.
 
 ### Remote Configuration 
 
@@ -64,8 +83,8 @@ A IDB configuration object has these keys:
 
 - `url`: URL where the IDB API is reached, eg. https://idb.example.org/api/v2
 - `version`: API version to use, `2` or `3` (integer)
-- `token`: IDB API token
-- `create`: set to true to create nonexisting machines in the IDB
+- `token`: IDB API token(s). Can be a single string or an array of strings if objects of multiple owners should be updated.
+- `create`: set to true to create nonexisting machines in the IDB. This only works with a single token.
 
 #### Driver configuration
 
@@ -134,8 +153,8 @@ Example:
 			{
 				"idb": {
 					"url": "https://idb.example.org/api/v2",
-					"token": "idb_api_token",
-					"create": true
+					"token": ["idb_api_token", "idb_api_token_2"],
+					"create": false
 				},
 				"driver": {
 					"name": "libvirt",

@@ -1,6 +1,5 @@
 # venvs
-venv
-venv-dev
+venv*
 
 # packaging
 tags
